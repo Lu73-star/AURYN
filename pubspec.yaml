@@ -1,4 +1,4 @@
-name: AURYN
+name: auryn
 description: "A new Flutter project."
 # Prevent accidental publishing to pub.dev.
 publish_to: 'none'
