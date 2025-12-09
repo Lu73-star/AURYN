@@ -25,6 +25,8 @@ class VoiceCapture {
   bool _isListening = false;
   bool get isListening => _isListening;
 
+  Timer? _audioTimer;
+
   /// StreamController para enviar bytes de áudio capturado
   final StreamController<Uint8List> audioStream =
       StreamController<Uint8List>.broadcast();
@@ -41,26 +43,18 @@ class VoiceCapture {
 
     _isListening = true;
 
-    await _recorder.start(
+    // Use stream() method for real-time audio data in record 6.x
+    final stream = await _recorder.startStream(
       const RecordConfig(
-        encoder: AudioEncoder.wav,
-        bitRate: 128000,
+        encoder: AudioEncoder.pcm16bits,
         sampleRate: 44100,
+        numChannels: 1,
       ),
     );
 
-    // Note: extractWaveform method is not available in record 6.x
-    // Stream-based recording would need to use the stream() method instead
-    // For now, this is a placeholder that needs proper implementation
-    Timer.periodic(const Duration(milliseconds: 200), (t) async {
-      if (!_isListening) {
-        t.cancel();
-        return;
-      }
-
-      // The record package 6.x doesn't provide extractWaveform method
-      // You would need to use stream() method for real-time audio data
-      // or use stop() to get the recorded file path
+    // Listen to the audio stream
+    stream.listen((data) {
+      audioStream.add(data);
     });
   }
 
@@ -70,6 +64,7 @@ class VoiceCapture {
 
   html.MediaStream? _webStream;
   html.MediaRecorder? _mediaRecorder;
+  Function? _webDataListener;
 
   Future<void> startWebCapture() async {
     try {
@@ -81,12 +76,14 @@ class VoiceCapture {
 
       _isListening = true;
 
-      _mediaRecorder!.addEventListener('dataavailable', (event) {
+      _webDataListener = (event) {
         final blob = event is html.BlobEvent ? event.data : null;
         blob?.arrayBuffer().then((buffer) {
           audioStream.add(Uint8List.view(buffer));
         });
-      });
+      };
+
+      _mediaRecorder!.addEventListener('dataavailable', _webDataListener!);
     } catch (e) {
       throw Exception('Falha ao acessar microfone no Web: $e');
     }
@@ -113,7 +110,14 @@ class VoiceCapture {
   Future<void> stop() async {
     _isListening = false;
 
+    _audioTimer?.cancel();
+    _audioTimer = null;
+
     if (kIsWeb) {
+      if (_mediaRecorder != null && _webDataListener != null) {
+        _mediaRecorder!.removeEventListener('dataavailable', _webDataListener!);
+        _webDataListener = null;
+      }
       _mediaRecorder?.stop();
       _mediaRecorder = null;
       _webStream?.getTracks().forEach((t) => t.stop());
@@ -130,6 +134,8 @@ class VoiceCapture {
 
   Future<void> dispose() async {
     await stop();
+    _audioTimer?.cancel();
+    _audioTimer = null;
     await _recorder.dispose();
     await audioStream.close();
   }
