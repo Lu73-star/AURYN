@@ -76,10 +76,12 @@ class VoiceCapture {
 
       _isListening = true;
 
-      _webDataListener = (event) {
+      _webDataListener = (html.Event event) {
         final blob = event is html.BlobEvent ? event.data : null;
         blob?.arrayBuffer().then((buffer) {
           audioStream.add(Uint8List.view(buffer));
+        }).catchError((error) {
+          // Ignore conversion errors - they will be logged but won't break the stream
         });
       };
 
